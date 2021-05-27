@@ -120,16 +120,18 @@ class Painter:
     All API methods may block to obey ratelimits.
     """
 
-    def __init__(self, token: str) -> None:
+    def __init__(self, token: str, warmup: int = 0) -> None:
         """Constructs a new Painter using the given token.
 
         A token can be obtained from https://pixels.pythondiscord.com/authorize.
+
+        Optionally provide a warmup to wait before interacting with the API.
         """
         self.headers = {"Authorization": f"Bearer {token}"}
 
-        self._get_pixel_limiter = Ratelimiter()
-        self._set_pixel_limiter = Ratelimiter()
-        self._get_canvas_limiter = Ratelimiter()
+        self._get_pixel_limiter = Ratelimiter(warmup=warmup)
+        self._set_pixel_limiter = Ratelimiter(warmup=warmup)
+        self._get_canvas_limiter = Ratelimiter(warmup=warmup)
 
     def update_ratelimiter(
         self, limiter: Ratelimiter, headers: t.Mapping[str, str]

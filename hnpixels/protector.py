@@ -68,7 +68,7 @@ def main() -> None:
         # Assume env only contains token=TOKEN
         token = env.read().strip()[len("token=") :]
 
-    painter = core.Painter(token)
+    painter = core.Painter(token, warmup=120)
     protector = Protector(painter)
 
     # # Load image with PIL, convert to RGB so painter can handle it
