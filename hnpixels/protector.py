@@ -27,7 +27,7 @@ class Protector:
     ) -> None:
         """Starts an infinite loop protecting the given image.
 
-        Takes an RBG Image.
+        Takes an RBGA Image.
 
         Checks pixels on the canvas to make sure they are the correct colour,
         repainting them if they are not.
@@ -39,26 +39,37 @@ class Protector:
             # Iterate image until we find a different pixel
             for y in range(image.height):
                 for x in range(image.width):
-                    # Map image coords onto canvas, depending on anchors
-                    if xEdge:
-                        canvasX = sketch.width - origin[0] + x
-                    else:
-                        canvasX = origin[0] + x
-                    if yEdge:
-                        canvasY = sketch.height - origin[1] + y
-                    else:
-                        canvasY = origin[1] + y
-                    # Check if pixel needs to be fixed
-                    goal = core.Colour.from_triple(image.getpixel((x, y)))
-                    current = sketch[canvasX, canvasY]
-                    if current != goal:
-                        # Refresh current with get_pixel to avoid needless placements
-                        # as much as possible
-                        current = self.painter.colour(canvasX, canvasY)
+                    # Check if there is any opacity
+                    if image.getpixel((x, y))[3] != 0:
+                        # todo consider blending when not total opacity
+                        goal = core.Colour.from_triple(image.getpixel((x, y))[0:3])
+                        # Map image coords onto canvas, depending on anchors
+                        if xEdge:
+                            canvasX = sketch.width - origin[0] + x
+                        else:
+                            canvasX = origin[0] + x
+                        if yEdge:
+                            canvasY = sketch.height - origin[1] + y
+                        else:
+                            canvasY = origin[1] + y
+                        # Check if pixel needs to be fixed
+                        current = sketch[canvasX, canvasY]
                         if current != goal:
-                            self.painter.paint(canvasX, canvasY, goal)
-                            # Refresh canvas since paint can block for a while
-                            sketch = self.painter.sketch()
+                            # Refresh current with get_pixel to avoid needless placements
+                            # as much as possible
+                            current = self.painter.colour(canvasX, canvasY)
+                            if current != goal:
+                                self.painter.paint(canvasX, canvasY, goal)
+                                # Refresh canvas since paint can block for a while
+                                sketch = self.painter.sketch()
+
+
+@dataclasses.dataclass
+class Job:
+    """Job object containing an RGBA Image and the origin to be drawn on."""
+
+    image: Image.Image
+    origin: t.Tuple[int, int]
 
 
 def main() -> None:
@@ -73,14 +84,18 @@ def main() -> None:
 
     # # Load image with PIL, convert to RGB so painter can handle it
     # with Image.open("python.png") as image:
-    #     rgb = image.convert("RGB")
+    #     rgb = image.convert("RGBA")
     #     # Start protection
     #     protector.activate((20, 0), rgb, xEdge=True)
 
-    with Image.open("canada.png") as image:
-        rgb = image.convert("RGB")
-        # Start protection
-        protector.activate((50, 91), rgb)
+    # with Image.open("canada.png") as image:
+    #     rgb = image.convert("RGBA")
+    #     # Start protection
+    #     protector.activate((50, 91), rgb)
+
+    with Image.open("wilson2.png") as image:
+        rgba = image.convert("RGBA")
+        protector.activate((160, 16), rgba)
 
 
 if __name__ == "__main__":

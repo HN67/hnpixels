@@ -28,7 +28,8 @@ class Colour:
         if len(hexrep) != 6:
             raise ValueError("Must provide a six digit hex string")
 
-        return cls(int(hexrep[0:2], 16), int(hexrep[2:4], 16), int(hexrep[4:6], 16))
+        # return cls(int(hexrep[0:2], 16), int(hexrep[2:4], 16), int(hexrep[4:6], 16))
+        return cls.from_triple(bytes.fromhex(hexrep))
 
     def hex(self) -> str:
         """Returns the 6 digit hex code representation of this Colour."""
@@ -150,6 +151,7 @@ class Painter:
             )
         except KeyError:
             limiter.unlock(remaining=0, limit=0, reset=int(headers["cooldown-reset"]))
+        # todo handle 'retry-after' from potential anti-spam
 
     def colour(self, x: int, y: int) -> Colour:
         """Returns the colour at the specified position."""
