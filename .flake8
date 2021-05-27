@@ -3,3 +3,4 @@
 
 # Configure options
 max-line-length = 100
+ignore = E203
