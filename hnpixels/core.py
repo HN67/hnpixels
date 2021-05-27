@@ -3,10 +3,14 @@
 from __future__ import annotations
 
 import dataclasses
+import logging
 import time
 import typing as t
 
 import requests
+
+logger = logging.getLogger("hnpixels")
+logger.addHandler(logging.NullHandler())
 
 
 @dataclasses.dataclass
@@ -30,6 +34,40 @@ class Colour:
         """Returns the 6 digit hex code representation of this Colour."""
         return "".join(f"{ch:0>2x}" for ch in (self.r, self.g, self.b)).upper()
 
+    @classmethod
+    def from_triple(cls, triple: t.Union[bytes, t.Tuple[int, int, int]]) -> Colour:
+        """Constructs a Colour object using a 3 byte bytes string or a Tuple of ints"""
+
+        if len(triple) != 3:
+            raise ValueError(
+                "Must provide a three byte byte string or three tuple of ints"
+            )
+
+        return cls(triple[0], triple[1], triple[2])
+
+    def tuple(self) -> t.Tuple[int, int, int]:
+        """Returns the RGB Tuple representation of this colour.
+
+        Should not usually be needed, as Colour should mimic a tuple in most cases.
+        """
+        return (self.r, self.g, self.b)
+
+    def __getitem__(self, index: int) -> int:
+        """Returns a channel of the colour.
+
+        r: 0, g: 1, b: 2
+        """
+        if index > 2 or index < -3:
+            raise IndexError(
+                f"Colour only has three channels, index {index} is out of bounds."
+            )
+
+        return self.tuple()[index]
+
+    def __iter__(self) -> t.Iterator[int]:
+        """Returns an iterator over the r g b."""
+        return iter(self.tuple())
+
 
 @dataclasses.dataclass
 class Sketch:
@@ -44,7 +82,7 @@ class Sketch:
         # We take a (x, y) key and access the content in row major order
         x, y = key
         index = x + self.width * y
-        return Colour(*self.content[index : index + 3])
+        return Colour.from_triple(self.content[index : index + 3])
 
 
 class Ratelimiter:
@@ -102,13 +140,16 @@ class Painter:
         limit: requests-limit
         reset: requests-reset
         """
-        limiter.unlock(
-            remaining=int(headers["requests-remaining"]),
-            limit=int(headers["requests-limit"]),
-            reset=int(headers["requests-reset"]),
-        )
+        try:
+            limiter.unlock(
+                remaining=int(headers["requests-remaining"]),
+                limit=int(headers["requests-limit"]),
+                reset=int(headers["requests-reset"]),
+            )
+        except KeyError:
+            limiter.unlock(remaining=0, limit=0, reset=int(headers["cooldown-reset"]))
 
-    def pixel(self, x: int, y: int) -> Colour:
+    def colour(self, x: int, y: int) -> Colour:
         """Returns the colour at the specified position."""
         self._get_pixel_limiter.lock()
         response = requests.get(
@@ -133,8 +174,12 @@ class Painter:
         response = requests.post(
             "https://pixels.pythondiscord.com/set_pixel",
             headers=self.headers,
-            data={"x": x, "y": y, "rgb": colour.hex()},
+            json={"x": x, "y": y, "rgb": colour.hex()},
         )
+        try:
+            logger.info("Post-paint message: %s", response.json()["message"])
+        except KeyError:
+            pass
         response.raise_for_status()
         self.update_ratelimiter(self._set_pixel_limiter, response.headers)
         # verify response?
