@@ -1,6 +1,7 @@
 """Script to maintain an image on the canvas."""
 
 import dataclasses
+import enum
 import logging
 import typing as t
 
@@ -17,7 +18,13 @@ class Protector:
 
     painter: core.Painter
 
-    def activate(self, origin: t.Tuple[int, int], image: Image.Image) -> None:
+    def activate(
+        self,
+        origin: t.Tuple[int, int],
+        image: Image.Image,
+        xEdge: bool = False,
+        yEdge: bool = False,
+    ) -> None:
         """Starts an infinite loop protecting the given image.
 
         Takes an RBG Image.
@@ -32,9 +39,15 @@ class Protector:
             # Iterate image until we find a different pixel
             for y in range(image.height):
                 for x in range(image.width):
-                    # Map image coords onto canvas
-                    canvasX = origin[0] + x
-                    canvasY = origin[1] + y
+                    # Map image coords onto canvas, depending on anchors
+                    if xEdge:
+                        canvasX = sketch.width - origin[0] + x
+                    else:
+                        canvasX = origin[0] + x
+                    if yEdge:
+                        canvasY = sketch.height - origin[1] + y
+                    else:
+                        canvasY = origin[1] + y
                     # Check if pixel needs to be fixed
                     goal = core.Colour.from_triple(image.getpixel((x, y)))
                     current = sketch[canvasX, canvasY]
@@ -58,11 +71,16 @@ def main() -> None:
     painter = core.Painter(token)
     protector = Protector(painter)
 
-    # Load image with PIL, convert to RGB so painter can handle it
-    with Image.open("python.png") as image:
+    # # Load image with PIL, convert to RGB so painter can handle it
+    # with Image.open("python.png") as image:
+    #     rgb = image.convert("RGB")
+    #     # Start protection
+    #     protector.activate((20, 0), rgb, xEdge=True)
+
+    with Image.open("canada.png") as image:
         rgb = image.convert("RGB")
         # Start protection
-        protector.activate((139, 0), rgb)
+        protector.activate((50, 91), rgb)
 
 
 if __name__ == "__main__":
