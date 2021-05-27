@@ -104,7 +104,7 @@ class Painter:
         """
         limiter.unlock(
             remaining=int(headers["requests-remaining"]),
-            limit=int(headers["reqeusts-limit"]),
+            limit=int(headers["requests-limit"]),
             reset=int(headers["requests-reset"]),
         )
 
