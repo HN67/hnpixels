@@ -2,6 +2,7 @@
 
 import dataclasses
 import logging
+import time
 import typing as t
 
 import numpy as np
@@ -43,6 +44,10 @@ class Protector:
         Checks pixels on the canvas to make sure they are the correct colour,
         repainting them if they are not.
         """
+
+        # Seconds to wait after every protection loop
+        wait = 1
+
         protecting = True
         while protecting:
             for job in jobs:
@@ -78,6 +83,9 @@ class Protector:
                                 self.painter.paint(canvasX, canvasY, goal)
                                 # Refresh canvas since paint can block for a while
                                 sketch = self.painter.sketch()
+            # Wait after repairing to avoid fast loop when nothing to repair
+            logger.info("Completed full circuit, waiting %s seconds", wait)
+            time.sleep(wait)
 
 
 def main() -> None:
@@ -92,8 +100,10 @@ def main() -> None:
 
     # Prepare jobs
     jobs = []
-    with Image.open("python.png") as image:
-        jobs.append(Job(np.asarray(image), (139, 0)))
+    # with Image.open("python.png") as image:
+    #     jobs.append(Job(np.asarray(image), (139, 0)))
+    with Image.open("borderpython.png") as image:
+        jobs.append(Job(np.asarray(image), (138, 0)))
     with Image.open("soft-edged-wilson.png") as image:
         jobs.append(Job(np.asarray(image), (160, 16)))
     with Image.open("yert.png") as image:
@@ -112,10 +122,11 @@ def main() -> None:
     #     # Start protection
     #     protector.activate((50, 91), rgb)
 
-    # protector.activate(jobs)
+    protector.activate(jobs)
 
-    sketch = painter.sketch()
-    print(sketch[0, 0])
+    # sketch = painter.sketch()
+    # print(sketch[0, 1], sketch[1, 0], sketch.content[624:627], sketch.content[3:6])
+    # Image.frombytes("RGB", (208, 117), sketch.content).show()
 
 
 if __name__ == "__main__":
