@@ -82,7 +82,8 @@ class Sketch:
         """Returns the colour of a given pixel."""
         # We take a (x, y) key and access the content in row major order
         x, y = key
-        index = x + self.width * y
+        # Each pixel is 3 bytes, so we multiple x+width*y by 3
+        index = (x + self.width * y) * 3
         return Colour.from_triple(self.content[index : index + 3])
 
 
