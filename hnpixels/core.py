@@ -129,10 +129,19 @@ class Painter:
         Optionally provide a warmup to wait before interacting with the API.
         """
         self.headers = {"Authorization": f"Bearer {token}"}
+        self._api = "https://pixels.pythondiscord.com"
 
         self._get_pixel_limiter = Ratelimiter(warmup=warmup)
         self._set_pixel_limiter = Ratelimiter(warmup=warmup)
         self._get_canvas_limiter = Ratelimiter(warmup=warmup)
+
+    def endpoint(self, name: str) -> str:
+        """Returns the URL of appending an endpoint name to the API.
+
+        E.g. if the API is https://pixels.pythondiscord.com,
+        endpoint("/set_pixel") returns "https://pixels.pythondiscord.com/set_pixel"
+        """
+        return self._api + name
 
     def update_ratelimiter(
         self, limiter: Ratelimiter, headers: t.Mapping[str, str]
@@ -152,14 +161,14 @@ class Painter:
         except KeyError:
             limiter.unlock(remaining=0, limit=0, reset=int(headers["cooldown-reset"]))
         # todo handle 'retry-after' from potential anti-spam
+        # also handle ratelimits for arbitrary endpoint (dict?)
+        # rather than a static number of limiters
 
     def colour(self, x: int, y: int) -> Colour:
         """Returns the colour at the specified position."""
         self._get_pixel_limiter.lock()
         response = requests.get(
-            "https://pixels.pythondiscord.com/get_pixel",
-            headers=self.headers,
-            params={"x": x, "y": y},
+            self.endpoint("/get_pixel"), headers=self.headers, params={"x": x, "y": y},
         )
         # Throw an informative error, rather than likely an index error on the ["rgb"]
         response.raise_for_status()
@@ -174,34 +183,47 @@ class Painter:
 
         May block for a significant period to obey ratelimits.
         """
+        # We want to avoid needlessly setting a pixel as much as possible
+        # set_pixel ratelimit is extremely low, while other endpoints like get_pixel
+        # have much higher limits.
+        if self.colour(x, y) == colour:
+            logger.info(
+                "pixel at x=%s,y=%s is already the correct color %s", x, y, colour.hex()
+            )
+            return
+        # Obey ratelimits
         self._set_pixel_limiter.lock()
+        # Waiting on ratelimit can be a while, so we should check the pixel again
+        # Potential optimization would be to check how long we waited
+        # (make .lock return the time slept?) and only recheck if its long enough (e.g. > 5s)
+        if self.colour(x, y) == colour:
+            logger.info(
+                "pixel at x=%s,y=%s is already the correct color %s", x, y, colour.hex()
+            )
+            return
         response = requests.post(
-            "https://pixels.pythondiscord.com/set_pixel",
+            self.endpoint("/set_pixel"),
             headers=self.headers,
             json={"x": x, "y": y, "rgb": colour.hex()},
         )
         try:
-            logger.info("Post-paint message: %s", response.json()["message"])
+            logger.info(response.json()["message"])
         except KeyError:
-            pass
+            logger.info("Strange response from /set_pixel: %s", response.content)
         response.raise_for_status()
         self.update_ratelimiter(self._set_pixel_limiter, response.headers)
         # verify response?
 
     def size(self) -> t.Tuple[int, int]:
         """Returns the size of the canvas."""
-        response = requests.get(
-            "https://pixels.pythondiscord.com/get_size", headers=self.headers
-        )
+        response = requests.get(self.endpoint("/get_size"), headers=self.headers)
         response.raise_for_status()
         return (response.json()["width"], response.json()["height"])
 
     def sketch(self) -> Sketch:
         """Returns the current state of the canvas."""
         self._get_canvas_limiter.lock()
-        response = requests.get(
-            "https://pixels.pythondiscord.com/get_pixels", headers=self.headers
-        )
+        response = requests.get(self.endpoint("/get_pixels"), headers=self.headers)
         response.raise_for_status()
         self.update_ratelimiter(self._get_canvas_limiter, response.headers)
         return Sketch(response.content, *self.size())
