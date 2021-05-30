@@ -15,7 +15,7 @@ root_logger = logging.getLogger()
 root_logger.setLevel(logging.INFO)
 handler = logging.StreamHandler()
 handler.setFormatter(
-    logging.Formatter("[%(levelname)s] %(name)s - %(asctime)s - %(message)s")
+    logging.Formatter("[%(asctime)s] [%(levelname)s] %(name)s - %(message)s")
 )
 root_logger.addHandler(handler)
 
@@ -95,32 +95,22 @@ def main() -> None:
         # Assume env only contains token=TOKEN
         token = env.read().strip()[len("token=") :]
 
-    painter = core.Painter(token, warmup=120)
+    painter = core.Painter(token)
     protector = Protector(painter)
 
     # Prepare jobs
+    jobs_list = [
+        ("python.png", (139, 0)),
+        ("soft-edged-wilson.png", (160, 16)),
+        ("yert.png", (0, 30)),
+        ("foxears.png", (90, 127)),
+        # ("canada.png", (50, 91)),
+    ]
     jobs = []
-    # with Image.open("python.png") as image:
-    #     jobs.append(Job(np.asarray(image), (139, 0)))
-    with Image.open("borderpython.png") as image:
-        jobs.append(Job(np.asarray(image), (138, 0)))
-    with Image.open("soft-edged-wilson.png") as image:
-        jobs.append(Job(np.asarray(image), (160, 16)))
-    with Image.open("yert.png") as image:
-        jobs.append(Job(np.asarray(image), (0, 30)))
-    # with Image.open("canada.png") as image:
-    #     jobs.append(Job(np.asarray(image), (50, 91)))
-
-    # # Load image with PIL, convert to RGB so painter can handle it
-    # with Image.open("python.png") as image:
-    #     rgb = image.convert("RGBA")
-    #     # Start protection
-    #     protector.activate((20, 0), rgb, xEdge=True)
-
-    # with Image.open("canada.png") as image:
-    #     rgb = image.convert("RGBA")
-    #     # Start protection
-    #     protector.activate((50, 91), rgb)
+    # Transform each job name into an image
+    for name, spot in jobs_list:
+        with Image.open(name) as image:
+            jobs.append(Job(np.asarray(image.convert("RGBA")), spot))
 
     protector.activate(jobs)
 

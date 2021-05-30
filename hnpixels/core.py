@@ -100,7 +100,7 @@ class Ratelimiter:
         self.guard_time = time.time() + warmup
 
     def unlock(
-        self, remaining: int, limit: int, reset: int
+        self, remaining: int, limit: int, reset: float
     ) -> None:  # pylint: disable=unused-argument
         """Loads the ratelimiter with the specified parameters.
 
@@ -116,13 +116,15 @@ class Ratelimiter:
             time.sleep(self.guard_time - current)
 
 
+# TODO use HEAD on startup instead of warmup to get ratelimit position
+# TODO logging for all behaviour/requets not just setting
 class Painter:
     """Client object for interacting with the Pixels API.
 
     All API methods may block to obey ratelimits.
     """
 
-    def __init__(self, token: str, warmup: int = 0) -> None:
+    def __init__(self, token: str) -> None:
         """Constructs a new Painter using the given token.
 
         A token can be obtained from https://pixels.pythondiscord.com/authorize.
@@ -132,9 +134,23 @@ class Painter:
         self.headers = {"Authorization": f"Bearer {token}"}
         self._api = "https://pixels.pythondiscord.com"
 
-        self._get_pixel_limiter = Ratelimiter(warmup=warmup)
-        self._set_pixel_limiter = Ratelimiter(warmup=warmup)
-        self._get_canvas_limiter = Ratelimiter(warmup=warmup)
+        self._get_pixel_limiter = Ratelimiter()
+        self._set_pixel_limiter = Ratelimiter()
+        self._get_canvas_limiter = Ratelimiter()
+
+        # Set ratelimits
+        self.update_ratelimiter(
+            self._get_pixel_limiter,
+            requests.head(self.endpoint("/get_pixel"), headers=self.headers).headers,
+        )
+        self.update_ratelimiter(
+            self._set_pixel_limiter,
+            requests.head(self.endpoint("/set_pixel"), headers=self.headers).headers,
+        )
+        self.update_ratelimiter(
+            self._get_canvas_limiter,
+            requests.head(self.endpoint("/get_pixels"), headers=self.headers).headers,
+        )
 
     def endpoint(self, name: str) -> str:
         """Returns the URL of appending an endpoint name to the API.
@@ -153,15 +169,17 @@ class Painter:
         limit: requests-limit
         reset: requests-reset
         """
+        logger.debug(headers)
         try:
             limiter.unlock(
                 remaining=int(headers["requests-remaining"]),
                 limit=int(headers["requests-limit"]),
-                reset=int(headers["requests-reset"]),
+                reset=float(headers["requests-reset"]),
             )
         except KeyError:
             limiter.unlock(remaining=0, limit=0, reset=int(headers["cooldown-reset"]))
         # todo handle 'retry-after' from potential anti-spam
+        # also consider requests-period the new header
         # also handle ratelimits for arbitrary endpoint (dict?)
         # rather than a static number of limiters
 
