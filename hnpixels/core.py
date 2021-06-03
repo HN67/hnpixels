@@ -204,6 +204,7 @@ class Endpoint:
         else:
             response.raise_for_status()
 
+    # TODO rename to request?
     def fetch(self, **kwargs: t.Any) -> requests.Response:
         """Fetches the endpoint, passing along kwargs to requests.request.
 
@@ -262,11 +263,11 @@ class Endpoint:
             raise requests.HTTPError("Bad response from endpoint", response=response)
 
 
-# TODO use HEAD on startup instead of warmup to get ratelimit position
 # TODO logging for all behaviour/requets not just setting
 # TODO maybe dont hard crash on http error codes?
 # depends on code/method but a failed request may not neccesitate halting
 # especially since we sometimes just get random server errors
+# UPDATE: 429 shouldnt hard error anymore but others will
 class Painter:
     """Client object for interacting with the Pixels API.
 
@@ -283,22 +284,14 @@ class Painter:
         self.headers = {"Authorization": f"Bearer {token}"}
         self._api = "https://pixels.pythondiscord.com"
 
-        self._get_pixel_limiter = Ratelimiter()
-        self._set_pixel_limiter = Ratelimiter()
-        self._get_canvas_limiter = Ratelimiter()
-
-        # Set ratelimits
-        self.update_ratelimiter(
-            self._get_pixel_limiter,
-            requests.head(self.endpoint("/get_pixel"), headers=self.headers).headers,
+        self._get_pixel_endpoint = Endpoint(
+            "GET", self.endpoint("/get_pixel"), headers=self.headers
         )
-        self.update_ratelimiter(
-            self._set_pixel_limiter,
-            requests.head(self.endpoint("/set_pixel"), headers=self.headers).headers,
+        self._get_pixels_endpoint = Endpoint(
+            "GET", self.endpoint("/get_pixels"), headers=self.headers
         )
-        self.update_ratelimiter(
-            self._get_canvas_limiter,
-            requests.head(self.endpoint("/get_pixels"), headers=self.headers).headers,
+        self._set_pixel_endpoint = Endpoint(
+            "POST", self.endpoint("/set_pixel"), headers=self.headers
         )
 
     def endpoint(self, name: str) -> str:
@@ -309,58 +302,13 @@ class Painter:
         """
         return self._api + name
 
-    def update_ratelimiter(
-        self, limiter: Ratelimiter, headers: t.Mapping[str, str]
-    ) -> None:
-        """Updates (unlock) the given ratelimiter using the following headers:
-
-        remaining: requests-remaining
-        limit: requests-limit
-        reset: requests-reset
-        """
-        logger.debug(headers)
-        try:
-            limiter.unlock(
-                remaining=int(headers["requests-remaining"]),
-                limit=int(headers["requests-limit"]),
-                reset=float(headers["requests-reset"]),
-            )
-        except KeyError:
-            try:
-                limiter.unlock(
-                    remaining=0, limit=0, reset=float(headers["cooldown-reset"])
-                )
-            except KeyError:
-                try:
-                    limiter.unlock(
-                        remaining=0, limit=0, reset=float(headers["retry-after"])
-                    )
-                except KeyError as error:
-                    raise KeyError(
-                        f"No ratelimit headers found in {headers}"
-                    ) from error
-
-        # todo handle 'retry-after' from potential anti-spam
-        # also consider requests-period the new header
-        # also handle ratelimits for arbitrary endpoint (dict?)
-        # rather than a static number of limiters
-
-    # TODO Handle 410 Gone Error specifically, and 429 Ratelimit
     def colour(self, x: int, y: int) -> Colour:
         """Returns the colour at the specified position."""
-        self._get_pixel_limiter.lock()
-        response = requests.get(
-            self.endpoint("/get_pixel"), headers=self.headers, params={"x": x, "y": y},
-        )
-        # Throw an informative error, rather than likely an index error on the ["rgb"]
-        response.raise_for_status()
-        # Load ratelimiter
-        self.update_ratelimiter(self._get_pixel_limiter, response.headers)
+        response = self._get_pixel_endpoint.fetch(params={"x": x, "y": y})
         # Transform to Colour object
         return Colour.from_hex(response.json()["rgb"])
         # return response.json()["rgb"]
 
-    # TODO Handle 429 Ratelimit without error
     def paint(self, x: int, y: int, colour: Colour, *, check: bool = True) -> None:
         """Sets the colour of a pixel at the specified position.
 
@@ -370,50 +318,45 @@ class Painter:
 
         May block for a significant period to obey ratelimits.
         """
+        # TODO restore checking get_pixel after ratelimit sleeping
         # We want to avoid needlessly setting a pixel as much as possible
         # set_pixel ratelimit is extremely low, while other endpoints like get_pixel
         # have much higher limits.
         # TODO wrap in try blocks, also add a parameter to check or not
-        if self.colour(x, y) == colour:
-            logger.info(
-                "pixel at x=%s,y=%s is already the correct color %s", x, y, colour.hex()
-            )
-            return
-        # Obey ratelimits
-        self._set_pixel_limiter.lock()
-        # Waiting on ratelimit can be a while, so we should check the pixel again
-        # Potential optimization would be to check how long we waited
-        # (make .lock return the time slept?) and only recheck if its long enough (e.g. > 5s)
-        if self.colour(x, y) == colour:
-            logger.info(
-                "pixel at x=%s,y=%s is already the correct color %s", x, y, colour.hex()
-            )
-            return
-        # TODO handle out-of-canvas pixels? maybe? need to check the response to such a request
-        response = requests.post(
-            self.endpoint("/set_pixel"),
-            headers=self.headers,
+
+        try:
+            if check and self.colour(x, y) == colour:
+                logger.info(
+                    "pixel at x=%s,y=%s is already the correct color %s",
+                    x,
+                    y,
+                    colour.hex(),
+                )
+                # return since we dont need to paint over
+                return
+        except requests.HTTPError:
+            # other than logging, we can just continue
+            logger.debug("pixel at x=%s,y=%s has an unknown color.", x, y)
+
+        # Make request
+        response = self._set_pixel_endpoint.fetch(
             json={"x": x, "y": y, "rgb": colour.hex()},
         )
+
         try:
             logger.info(response.json()["message"])
         except KeyError:
             logger.info("Strange response from /set_pixel: %s", response.content)
-        response.raise_for_status()
-        self.update_ratelimiter(self._set_pixel_limiter, response.headers)
-        # verify response?
 
+    # TODO turn this into an Endpoint using method?
+    # bit different with lack of ratelimits
     def size(self) -> t.Tuple[int, int]:
         """Returns the size of the canvas."""
         response = requests.get(self.endpoint("/get_size"), headers=self.headers)
         response.raise_for_status()
         return (response.json()["width"], response.json()["height"])
 
-    # TODO Handle 410 Gone Error specifically, and 429 Ratelimit
     def sketch(self) -> Sketch:
         """Returns the current state of the canvas."""
-        self._get_canvas_limiter.lock()
-        response = requests.get(self.endpoint("/get_pixels"), headers=self.headers)
-        response.raise_for_status()
-        self.update_ratelimiter(self._get_canvas_limiter, response.headers)
+        response = self._get_pixels_endpoint.fetch()
         return Sketch(response.content, *self.size())
