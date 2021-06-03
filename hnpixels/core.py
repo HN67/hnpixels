@@ -99,6 +99,9 @@ class Ratelimiter:
         # Time at which lock stops blocking
         self.guard_time = time.time() + warmup
 
+    # TODO clean up this method. should we be passing limit?
+    # what should we be passing?
+    # should requests-period be taken into account?
     def unlock(
         self, remaining: int, limit: int, reset: float
     ) -> None:  # pylint: disable=unused-argument
@@ -186,11 +189,6 @@ class Endpoint:
                         f"No ratelimit headers found in {headers}"
                     ) from error
 
-        # todo handle 'retry-after' from potential anti-spam
-        # also consider requests-period the new header
-        # also handle ratelimits for arbitrary endpoint (dict?)
-        # rather than a static number of limiters
-
     def activate(self) -> None:
         """Performs a HEAD request to load ratelimit information"""
         response = requests.head(self.url, headers=self.headers)
@@ -204,8 +202,7 @@ class Endpoint:
         else:
             response.raise_for_status()
 
-    # TODO rename to request?
-    def fetch(self, **kwargs: t.Any) -> requests.Response:
+    def request(self, **kwargs: t.Any) -> requests.Response:
         """Fetches the endpoint, passing along kwargs to requests.request.
 
         Uses default headers unionized with provided headers if provided.
@@ -263,11 +260,13 @@ class Endpoint:
             raise requests.HTTPError("Bad response from endpoint", response=response)
 
 
-# TODO logging for all behaviour/requets not just setting
-# TODO maybe dont hard crash on http error codes?
-# depends on code/method but a failed request may not neccesitate halting
-# especially since we sometimes just get random server errors
-# UPDATE: 429 shouldnt hard error anymore but others will
+# TODO List:
+# more logging (for all behaviour/requests not just setting)
+# deeper consideration of http error codes
+#   429 is already handled, but sometimes stray 500 etc can be received.
+#   although potentially those should be handled by client code,
+#   since the library may not be able to assume that failing a call is okay
+# switch to async (sizeable task)
 class Painter:
     """Client object for interacting with the Pixels API.
 
@@ -304,7 +303,7 @@ class Painter:
 
     def colour(self, x: int, y: int) -> Colour:
         """Returns the colour at the specified position."""
-        response = self._get_pixel_endpoint.fetch(params={"x": x, "y": y})
+        response = self._get_pixel_endpoint.request(params={"x": x, "y": y})
         # Transform to Colour object
         return Colour.from_hex(response.json()["rgb"])
         # return response.json()["rgb"]
@@ -319,12 +318,9 @@ class Painter:
         May block for a significant period to obey ratelimits.
         """
         # TODO restore checking get_pixel after ratelimit sleeping
-        # We want to avoid needlessly setting a pixel as much as possible
-        # set_pixel ratelimit is extremely low, while other endpoints like get_pixel
-        # have much higher limits.
-        # TODO wrap in try blocks, also add a parameter to check or not
-
+        # since sleep can be long (~120s) and the pixel may have changed
         try:
+            # only check the colour if required (achieved via short circuit)
             if check and self.colour(x, y) == colour:
                 logger.info(
                     "pixel at x=%s,y=%s is already the correct color %s",
@@ -339,7 +335,7 @@ class Painter:
             logger.debug("pixel at x=%s,y=%s has an unknown color.", x, y)
 
         # Make request
-        response = self._set_pixel_endpoint.fetch(
+        response = self._set_pixel_endpoint.request(
             json={"x": x, "y": y, "rgb": colour.hex()},
         )
 
@@ -358,5 +354,5 @@ class Painter:
 
     def sketch(self) -> Sketch:
         """Returns the current state of the canvas."""
-        response = self._get_pixels_endpoint.fetch()
+        response = self._get_pixels_endpoint.request()
         return Sketch(response.content, *self.size())
