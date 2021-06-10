@@ -79,9 +79,17 @@ class Sketch:
     height: int
 
     def __getitem__(self, key: t.Tuple[int, int]) -> Colour:
-        """Returns the colour of a given pixel."""
+        """Returns the colour of a given pixel.
+
+        Negative indices are subtracted from width and height respectively.
+        """
         # We take a (x, y) key and access the content in row major order
         x, y = key
+        # Convert negative indices to positive via length - i
+        if x < 0:
+            x = self.width + x
+        if y < 0:
+            y = self.height + y
         # Each pixel is 3 bytes, so we multiple x+width*y by 3
         index = (x + self.width * y) * 3
         return Colour.from_triple(self.content[index : index + 3])
