@@ -46,16 +46,21 @@ class Protector:
         """
 
         # Seconds to wait after every protection loop
-        wait = 1
+        wait = 15
 
         protecting = True
         while protecting:
             for job in jobs:
                 # Flatten names to avoid changing the rest of the code
                 image = job.image
-                origin = job.origin
+                imageX, imageY = job.origin
                 # Get current canvas
                 sketch = self.painter.sketch()
+                # Handle negative image coordinates
+                if imageX < 0:
+                    imageX = sketch.width + imageX
+                if imageY < 0:
+                    imageY = sketch.height + imageY
                 # Iterate image until we find a different pixel
                 for y in range(image.shape[0]):
                     for x in range(image.shape[1]):
@@ -63,10 +68,8 @@ class Protector:
                         if image[y, x, 3] != 0:
                             # todo consider blending when not total opacity
                             goal = core.Colour.from_triple(image[y, x, :3])
-                            # Map image coords onto canvas, depending on anchors
-                            # todo eventually restore anchor capability?
-                            canvasX = origin[0] + x
-                            canvasY = origin[1] + y
+                            canvasX = imageX + x
+                            canvasY = imageY + y
                             # Check if pixel needs to be fixed
                             current = sketch[canvasX, canvasY]
                             if current != goal:
@@ -99,16 +102,32 @@ def main() -> None:
     protector = Protector(painter)
 
     # Prepare jobs
-    jobs_list = [
-        ("python.png", (139, 0)),
-        ("soft-edged-wilson.png", (160, 16)),
-        ("yert.png", (0, 30)),
-        ("foxears.png", (90, 127)),
+    jobs: t.MutableSequence[Job] = []
+
+    # hidden_message = (
+    #     b"Hi! You are banned, sorry. See here for more info: "
+    #     b"https://pydis.org/.env | 403 Forbidden          "
+    # )
+    # rgb_message = np.frombuffer(hidden_message, dtype="uint8").reshape((1, -1, 3))
+    # rgba_message = np.dstack(
+    #     (rgb_message, np.full(rgb_message.shape[0:2], 255, dtype="uint8"))
+    # )
+    # jobs.append(Job(rgba_message, (0, 0)))
+
+    images_list = [
+        # (("windows_wumpus.png"), (0, 0)),
+        # ("mark.png", (111, 131)),
+        # ("mark.png", (111, 127)),
+        # ("mark.png", (111, 123)),
+        ("factorio.png", (255, 119)),
+        ("foxears.png", (90, -8)),
+        ("yert.png", (0, -14)),
+        # ("python.png", (139, 0)),
+        # ("soft-edged-wilson.png", (160, 16)),
         # ("canada.png", (50, 91)),
     ]
-    jobs = []
-    # Transform each job name into an image
-    for name, spot in jobs_list:
+    # Transform each image name into an image
+    for name, spot in images_list:
         with Image.open(name) as image:
             jobs.append(Job(np.asarray(image.convert("RGBA")), spot))
 
