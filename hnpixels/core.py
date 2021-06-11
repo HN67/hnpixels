@@ -7,6 +7,7 @@ import logging
 import time
 import typing as t
 
+import numpy
 import requests
 
 logger = logging.getLogger("hnpixels")
@@ -72,27 +73,44 @@ class Colour:
 
 @dataclasses.dataclass
 class Sketch:
-    """Dataclass containing canvas state."""
+    """Dataclass containing canvas state.
 
-    content: bytes
-    width: int
-    height: int
+    Wraps an ndarray with helper methods.
+    """
+
+    canvas: numpy.ndarray
+
+    @classmethod
+    def from_bytes(cls, content: bytes, width: int, height: int) -> Sketch:
+        """Construct a Sketch from a byte string.
+
+        Interprets each three byte pair as a 24bit RGB pixel,
+        and organizes in row major order.
+        """
+        return cls(
+            canvas=numpy.frombuffer(content, dtype="uint8").reshape((height, width, 3))
+        )
 
     def __getitem__(self, key: t.Tuple[int, int]) -> Colour:
         """Returns the colour of a given pixel.
 
+        Takes paramater as (x, y).
+
         Negative indices are subtracted from width and height respectively.
         """
-        # We take a (x, y) key and access the content in row major order
+        # We flip the order x and y are passed to the array
         x, y = key
-        # Convert negative indices to positive via length - i
-        if x < 0:
-            x = self.width + x
-        if y < 0:
-            y = self.height + y
-        # Each pixel is 3 bytes, so we multiple x+width*y by 3
-        index = (x + self.width * y) * 3
-        return Colour.from_triple(self.content[index : index + 3])
+        return Colour.from_triple(self.canvas[y, x])
+
+    @property
+    def width(self) -> int:
+        """Width of the Sketch"""
+        return self.canvas.shape[1]
+
+    @property
+    def height(self) -> int:
+        """Height of the Sketch"""
+        return self.canvas.shape[0]
 
 
 class Ratelimiter:
@@ -265,7 +283,9 @@ class Endpoint:
         # might be dumb but raising custom httperror since raise_for_status
         # isnt guaranteed too from a typecheck perspective
         else:
-            raise requests.HTTPError("Bad response from endpoint", response=response)
+            raise requests.HTTPError(
+                f"Bad response from endpoint: {response.status_code}", response=response
+            )
 
 
 # TODO List:
@@ -363,4 +383,4 @@ class Painter:
     def sketch(self) -> Sketch:
         """Returns the current state of the canvas."""
         response = self._get_pixels_endpoint.request()
-        return Sketch(response.content, *self.size())
+        return Sketch.from_bytes(response.content, *self.size())
