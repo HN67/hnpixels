@@ -155,6 +155,9 @@ class RatelimitError(requests.HTTPError):
 
 TMR: int = requests.codes.too_many_requests  # pylint: disable=no-member
 
+# Raised when an endpoint fails to communicate
+NetworkError = requests.HTTPError
+
 
 @dataclasses.dataclass(init=False)
 class Endpoint:

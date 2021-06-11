@@ -55,37 +55,47 @@ class Protector:
                 image = job.image
                 imageX, imageY = job.origin
                 # Get current canvas
-                sketch = self.painter.sketch()
-                # Handle negative image coordinates
-                if imageX < 0:
-                    imageX = sketch.width + imageX
-                if imageY < 0:
-                    imageY = sketch.height + imageY
-                # Iterate image until we find a different pixel
-                for y in range(image.shape[0]):
-                    for x in range(image.shape[1]):
-                        # Check if there is any opacity
-                        if image[y, x, 3] != 0:
-                            # todo consider blending when not total opacity
-                            goal = core.Colour.from_triple(image[y, x, :3])
-                            canvasX = imageX + x
-                            canvasY = imageY + y
-                            # Check if pixel needs to be fixed
-                            current = sketch[canvasX, canvasY]
-                            if current != goal:
-                                logger.info(
-                                    "Pixel at x=%s,y=%s is different from goal, %s vs %s",
-                                    canvasX,
-                                    canvasY,
-                                    current.hex(),
-                                    goal.hex(),
-                                )
+                try:
+                    sketch = self.painter.sketch()
+                except core.NetworkError as error:
+                    logger.error("Failed to get canvas: %s", error)
+                else:
+                    # Handle negative image coordinates
+                    if imageX < 0:
+                        imageX = sketch.width + imageX
+                    if imageY < 0:
+                        imageY = sketch.height + imageY
+                    # Iterate image until we find a different pixel
+                    for y in range(image.shape[0]):
+                        for x in range(image.shape[1]):
+                            # Check if there is any opacity
+                            if image[y, x, 3] != 0:
+                                # todo consider blending when not total opacity
+                                goal = core.Colour.from_triple(image[y, x, :3])
+                                canvasX = imageX + x
+                                canvasY = imageY + y
+                                # Check if pixel needs to be fixed
+                                current = sketch[canvasX, canvasY]
+                                if current != goal:
+                                    logger.info(
+                                        "Pixel at x=%s,y=%s is different from goal, %s vs %s",
+                                        canvasX,
+                                        canvasY,
+                                        current.hex(),
+                                        goal.hex(),
+                                    )
 
-                                # Dont need to use /get_pixel to check live color
-                                # since .paint automatically does that
-                                self.painter.paint(canvasX, canvasY, goal)
-                                # Refresh canvas since paint can block for a while
-                                sketch = self.painter.sketch()
+                                    # Dont need to use /get_pixel to check live color
+                                    # since .paint automatically does that
+                                    try:
+                                        self.painter.paint(canvasX, canvasY, goal)
+                                    except core.NetworkError as error:
+                                        logger.error("Failed to set pixel: %s", error)
+                                    try:
+                                        # Refresh canvas since paint can block for a while
+                                        sketch = self.painter.sketch()
+                                    except core.NetworkError as error:
+                                        logger.error("Failed to get canvas: %s", error)
             # Wait after repairing to avoid fast loop when nothing to repair
             logger.info("Completed full circuit, waiting %s seconds", wait)
             time.sleep(wait)
@@ -119,12 +129,15 @@ def main() -> None:
         # ("mark.png", (111, 131)),
         # ("mark.png", (111, 127)),
         # ("mark.png", (111, 123)),
-        ("factorio.png", (255, 119)),
-        ("foxears.png", (90, -8)),
-        ("yert.png", (0, -14)),
         # ("python.png", (139, 0)),
         # ("soft-edged-wilson.png", (160, 16)),
         # ("canada.png", (50, 91)),
+        # Main canvas
+        # ("factorio.png", (255, 119)),
+        # ("foxears.png", (90, -8)),
+        # ("yert.png", (0, -14)),
+        # Emoji canvas
+        ("factorio.png", (7, 7))
     ]
     # Transform each image name into an image
     for name, spot in images_list:
