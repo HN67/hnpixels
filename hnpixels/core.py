@@ -78,7 +78,7 @@ class Sketch:
     Wraps an ndarray with helper methods.
     """
 
-    canvas: numpy.ndarray
+    raw: numpy.ndarray
 
     @classmethod
     def from_bytes(cls, content: bytes, width: int, height: int) -> Sketch:
@@ -88,7 +88,7 @@ class Sketch:
         and organizes in row major order.
         """
         return cls(
-            canvas=numpy.frombuffer(content, dtype="uint8").reshape((height, width, 3))
+            raw=numpy.frombuffer(content, dtype="uint8").reshape((height, width, 3))
         )
 
     def __getitem__(self, key: t.Tuple[int, int]) -> Colour:
@@ -100,17 +100,17 @@ class Sketch:
         """
         # We flip the order x and y are passed to the array
         x, y = key
-        return Colour.from_triple(self.canvas[y, x])
+        return Colour.from_triple(self.raw[y, x])
 
     @property
     def width(self) -> int:
         """Width of the Sketch"""
-        return self.canvas.shape[1]
+        return self.raw.shape[1]
 
     @property
     def height(self) -> int:
         """Height of the Sketch"""
-        return self.canvas.shape[0]
+        return self.raw.shape[0]
 
 
 class Ratelimiter:
