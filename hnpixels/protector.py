@@ -133,11 +133,12 @@ def main() -> None:
         # ("soft-edged-wilson.png", (160, 16)),
         # ("canada.png", (50, 91)),
         # Main canvas
-        # ("factorio.png", (255, 119)),
-        # ("foxears.png", (90, -8)),
-        # ("yert.png", (0, -14)),
+        ("factorio.png", (255, 119)),
+        ("foxears.png", (90, -8)),
+        ("yert.png", (0, -14)),
         # Emoji canvas
-        ("factorio.png", (7, 7))
+        # ("factorio.png", (7, 7)),
+        # ("factorio_corner.png", (-9, -10)),
     ]
     # Transform each image name into an image
     for name, spot in images_list:
@@ -145,6 +146,8 @@ def main() -> None:
             jobs.append(Job(np.asarray(image.convert("RGBA")), spot))
 
     protector.activate(jobs)
+    # with open("final", "wb") as file:
+    #     file.write(painter._get_pixels_endpoint.request().content)
 
     # sketch = painter.sketch()
     # print(sketch[0, 1], sketch[1, 0], sketch.content[624:627], sketch.content[3:6])
